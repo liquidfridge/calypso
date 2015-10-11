@@ -1,0 +1,223 @@
+<?php
+
+/**
+ * @file
+ * Calypso
+ *
+ * @author Hein Bekker <hein@netbek.co.za>
+ * @copyright (c) 2015 Hein Bekker
+ * @license http://www.gnu.org/licenses/gpl-2.0.txt GPLv2
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function calypso_menu() {
+  $items = array();
+  $path = drupal_get_path('module', 'calypso');
+
+  $items['admin/calypso'] = array(
+    'title' => 'Radio',
+    'description' => 'Configure Radio.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('calypso_admin_settings'),
+    'access arguments' => array('administer calypso'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'calypso.admin.inc',
+    'file path' => $path,
+    'weight' => -15,
+  );
+
+  $items['admin/calypso/settings'] = array(
+    'title' => 'Settings',
+    'description' => 'Configure Radio settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('calypso_admin_settings'),
+    'access arguments' => array('administer calypso'),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'file' => 'calypso.admin.inc',
+    'file path' => $path,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function calypso_menu_alter(&$items) {
+  // Remove RSS feed from head.
+  $items['rss.xml']['page callback'] = 'drupal_not_found';
+}
+
+/**
+ * Implements hook_html_head_alter().
+ */
+function calypso_html_head_alter(&$head_elements) {
+  foreach (array_keys($head_elements) as $key) {
+    // Remove RSS feed from head.
+    if (strstr($key, 'rss.xml')) {
+      unset($head_elements[$key]);
+    }
+  }
+}
+
+/**
+ * Implements hook_permission().
+ */
+function calypso_permission() {
+  return array(
+    'administer calypso' => array(
+      'title' => t('Administer Calypso'),
+      'description' => t('Allows users to change the Calypso settings.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function calypso_form_episode_node_form_alter(&$form, &$form_state, $form_id) {
+  // Hide the Title field. The value from the Date field is used as the title.
+  $form['title']['#access'] = FALSE;
+}
+
+/**
+ * Implements hook_node_presave().
+ */
+function calypso_node_presave($node) {
+  if ($node->type == 'episode') {
+    // Use Date field value as Title.
+    $field_name = 'field_date';
+    $items = field_get_items('node', $node, $field_name);
+
+    if (empty($items)) {
+      $title = 'Untitled';
+    }
+    else {
+      $item = $items[0];
+      $field = field_info_field($field_name);
+      $timezone_db = date_get_timezone_db($field['settings']['tz_handling']);
+      $timezone = date_get_timezone($field['settings']['tz_handling'], $item['timezone']);
+      $date = new DateObject($item['value'], $timezone_db);
+      date_timezone_set($date, timezone_open($timezone));
+      $title = $date->format('Y-m-d');
+    }
+
+    $node->title = $title;
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function calypso_form_alter(&$form, &$form_state, $form_id) {
+  // Set height of CKEditor instances.
+  if (module_exists('ckeditor')) {
+    $instances = array(
+      array(
+        'form_id' => 'comment_node_book_form',
+        'field_name' => 'comment_body',
+        'height' => 200,
+      ),
+      array(
+        'form_id' => 'page_node_form',
+        'field_name' => 'body',
+        'height' => 500,
+      ),
+    );
+    foreach ($instances as $instance) {
+      if ($form_id == $instance['form_id']) {
+        if (isset($form_state['field'][$instance['field_name']])) {
+          $field_language = $form[$instance['field_name']]['#language'];
+          $id = 'edit-' . $instance['field_name'] . '-' . $field_language . '-0-value';
+          $id = str_replace('_', '-', $id);
+          drupal_add_js(array('ckeditor' => array('instanceConfig' => array($id => array('height' => $instance['height'] . 'px')))), 'setting');
+        }
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_image_default_styles().
+ */
+function calypso_image_default_styles() {
+  $styles = array();
+
+  // Scale
+  $sizes = array(
+    400,
+    800,
+    1000,
+    1200,
+    1600,
+    2000,
+    2400
+  );
+
+  foreach ($sizes as $size) {
+    $styles['s_' . $size] = array(
+      'label' => $size . ' (' . $size . ' width or height)',
+      'effects' => array(
+        array(
+          'name' => 'image_scale',
+          'data' => array('width' => $size, 'height' => $size, 'upscale' => 0),
+          'weight' => 0,
+        ),
+      )
+    );
+  }
+
+  $styles['og_facebook'] = array(
+    'label' => 'Open Graph: Facebook (1200x630)',
+    'effects' => array(
+      array(
+        'name' => 'image_scale_and_crop',
+        'data' => array('width' => 1200, 'height' => 630),
+        'weight' => 0,
+      ),
+    )
+  );
+
+  $styles['og_twitter'] = array(
+    'label' => 'Open Graph: Twitter (480x250)',
+    'effects' => array(
+      array(
+        'name' => 'image_scale_and_crop',
+        'data' => array('width' => 480, 'height' => 250),
+        'weight' => 0,
+      ),
+    )
+  );
+
+  return $styles;
+}
+
+/**
+ *
+ * @param int $visibility
+ * @param string $pages
+ * @param string $path Path to check. If empty, then current path is checked.
+ * @return boolean
+ */
+function calypso_check_path_visibility($visibility, $pages, $path = NULL) {
+  if (empty($pages)) {
+    return FALSE;
+  }
+
+  if ($path === NULL) {
+    $path = $_GET['q'];
+  }
+
+  $pages = drupal_strtolower($pages);
+  $alias = drupal_strtolower(drupal_get_path_alias($path));
+  $match = drupal_match_path($alias, $pages);
+
+  if ($alias != $path) {
+    $match = $match || drupal_match_path($path, $pages);
+  }
+
+  return !($visibility xor $match);
+}

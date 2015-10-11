@@ -1,0 +1,10 @@
+core = 7.x
+package = Calypso
+name = Calypso Boost
+description = Customizations.
+
+dependencies[] = boost
+dependencies[] = calypso
+
+files[] = calypso_boost.install
+files[] = calypso_boost.module

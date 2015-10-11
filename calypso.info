@@ -1,0 +1,7 @@
+core = 7.x
+package = Calypso
+name = Calypso
+description = Customizations.
+
+files[] = calypso.install
+files[] = calypso.module
